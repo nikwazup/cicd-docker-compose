@@ -1,0 +1,36 @@
+variables:
+  DEPLOY_HOST: "YOUR-IP"
+  DEPLOY_USER: "YOUR-USER"
+  DEPLOY_REPO: "YOUR-REPO.gitlab.com"
+  DEPLOY_PROJECT: "ciproject"
+  DEPLOY_GROUP: "devops"
+  DEPLOY_BRANCH: "master"
+
+stages:
+  - deploy
+
+deploy:
+  stage: deploy
+  tags:
+    - deploy
+  before_script:
+    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config
+    - ssh-keyscan $DEPLOY_HOST >> ~/.ssh/known_hosts
+    - ssh-keyscan $DEPLOY_REPO >> ~/.ssh/known_hosts
+  script:
+    - echo "Debugging information:"
+    - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "echo 'Successfully connected'" # Проверка соединения
+    - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "ssh -T git@$DEPLOY_REPO" # Проверка соединения с GitLab
+    - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "mkdir -p /home/$DEPLOY_USER/ciproject"
+    - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "git clone git@DEPLOY_REPO:$DEPLOY_GROUP/$DEPLOY_PROJECT.git -b $DEPLOY_BRANCH /home/$DEPLOY_USER/$DEPLOY_PROJECT || echo 'Repository already cloned'"
+    - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "cd /home/$DEPLOY_USER/$DEPLOY_PROJECT && git pull && docker-compose down && docker-compose up -d"
+  only:
+    - master
+  when: manual
+  allow_failure: false
+
